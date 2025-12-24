@@ -29,8 +29,7 @@
 │   ├── selection.md      # ニュース選別用プロンプト
 │   └── script.md         # 漫才台本生成用プロンプト
 ├── assets/
-│   ├── bgm_op.mp3        # オープニング曲
-│   └── bgm_main.mp3      # 漫才中のうっすらしたBGM
+│   └── bgm_op.mp3        # オープニング曲
 └── public/               # GitHub Pages公開用ディレクトリ
     ├── audio/            # 生成されたMP3
     └── feed.xml          # ポッドキャストRSSフィード
