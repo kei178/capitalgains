@@ -6,6 +6,7 @@ openai>=1.0.0
 
 # Audio Processing
 pydub>=0.25.1
+audioop-lts  # Required for Python 3.13+ compatibility with pydub
 
 # HTTP Requests
 requests>=2.31.0
