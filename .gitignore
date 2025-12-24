@@ -29,6 +29,7 @@ Thumbs.db
 # Project specific
 public/audio/*.mp3
 *.pyc
+tmp/
 
 # Logs
 *.log
