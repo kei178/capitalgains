@@ -84,7 +84,7 @@ class PodcastMixer:
 
         Args:
             audio_data: List of audio info from synthesizer.
-                Format: [{"speaker": "進藤", "text": "...", "audio_path": "..."}]
+                Format: [{"speaker": "シンドウ", "text": "...", "audio_path": "..."}]
             output_filename: Custom output filename. If None, uses daily_YYYYMMDD.mp3.
             add_background_music: Whether to add subtle background music during dialogue.
             normalize_audio: Whether to normalize final audio output.
@@ -371,9 +371,9 @@ if __name__ == "__main__":
         for audio_file in audio_files:
             # Try to extract speaker from filename (e.g., line_0000_onyx.mp3)
             if "onyx" in audio_file.name:
-                speaker = "進藤"
+                speaker = "シンドウ"
             elif "alloy" in audio_file.name:
-                speaker = "守屋"
+                speaker = "モリヤ"
             else:
                 speaker = "Unknown"
 

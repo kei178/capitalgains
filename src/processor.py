@@ -8,6 +8,7 @@ This module uses OpenAI GPT-4o to:
 import json
 import logging
 import os
+import random
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -24,8 +25,10 @@ DEFAULT_TEMPERATURE = 0.7
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
+ASSETS_DIR = PROJECT_ROOT / "assets"
 SELECTION_PROMPT_PATH = PROMPTS_DIR / "selection.md"
 SCRIPT_PROMPT_PATH = PROMPTS_DIR / "script.md"
+PATTERNS_PATH = ASSETS_DIR / "patterns.json"
 
 
 class NewsProcessor:
@@ -138,7 +141,7 @@ class NewsProcessor:
             selected_news: List of selected news articles.
 
         Returns:
-            List of script lines in format: [{"speaker": "進藤", "text": "..."}]
+            List of script lines in format: [{"speaker": "シンドウ", "text": "..."}]
 
         Raises:
             Exception: If API call fails or response parsing fails.
@@ -162,7 +165,7 @@ class NewsProcessor:
             user_message = (
                 f"以下のニュースを使って漫才台本を作成してください。\n\n"
                 f"重要: 必ず台本全体を1つのJSON配列として返してください。\n"
-                f'出力形式: {{"script": [{{"speaker": "進藤", "text": "..."}}, {{"speaker": "守屋", "text": "..."}}]}}\n\n'
+                f'出力形式: {{"script": [{{"speaker": "シンドウ", "text": "..."}}, {{"speaker": "守屋", "text": "..."}}]}}\n\n'
                 f"{news_text}"
             )
 
@@ -192,6 +195,111 @@ class NewsProcessor:
             logger.error(f"Failed to generate script: {str(e)}")
             raise
 
+    def generate_manzai_script(
+        self,
+        selected_news: List[Dict[str, str]],
+        max_retries: int = 3
+    ) -> List[Dict[str, str]]:
+        """Generate detailed manzai script with pattern-based character interactions.
+
+        This method:
+        1. Loads manzai patterns from patterns.json
+        2. Assigns random patterns to each news article (no duplication)
+        3. Loads script prompt from prompts/script.md
+        4. Injects news+patterns into the {{NEWS_WITH_PATTERNS}} placeholder
+        5. Calls OpenAI API with strict JSON format requirements
+        6. Validates and retries on parsing errors
+
+        Args:
+            selected_news: List of selected news articles (typically 5).
+            max_retries: Maximum number of retries for API calls. Defaults to 3.
+
+        Returns:
+            List of script lines in format: [{"speaker": "モリヤ", "text": "..."}, ...]
+
+        Raises:
+            Exception: If all retry attempts fail or patterns cannot be loaded.
+
+        Examples:
+            >>> processor = NewsProcessor()
+            >>> script = processor.generate_manzai_script(selected_news)
+            >>> print(f"Generated script with {len(script)} lines")
+        """
+        logger.info(
+            f"Generating pattern-based manzai script from {len(selected_news)} news articles"
+        )
+
+        try:
+            # Step 1: Load manzai patterns
+            patterns = self._load_patterns()
+
+            # Step 2: Assign patterns to news articles
+            news_with_patterns = self._assign_patterns_to_news(selected_news, patterns)
+
+            # Step 3: Format news with patterns for prompt
+            news_patterns_text = self._format_news_with_patterns(news_with_patterns)
+
+            # Step 4: Load script prompt template from prompts/script.md
+            script_prompt_template = self._load_prompt(SCRIPT_PROMPT_PATH)
+
+            # Step 5: Inject news+patterns into the template
+            prompt_with_data = script_prompt_template.replace(
+                "{{NEWS_WITH_PATTERNS}}",
+                news_patterns_text
+            )
+
+            # Step 6: Create system message (the entire prompt becomes the system message)
+            system_message = prompt_with_data
+
+            # User message just confirms the request
+            user_message = (
+                "上記のニュースとパターンを使って、関西弁の漫才台本を作成してください。\n"
+                "必ずJSON形式で出力してください。"
+            )
+
+            # Step 7: Call OpenAI API with retry logic
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(f"Calling OpenAI API for manzai script generation (attempt {attempt}/{max_retries})...")
+
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": user_message}
+                        ],
+                        temperature=self.temperature,
+                        response_format={"type": "json_object"}
+                    )
+
+                    # Extract and parse response
+                    content = response.choices[0].message.content
+                    logger.debug(f"API response (first 300 chars): {content[:300]}...")
+
+                    # Validate and parse JSON response
+                    script = self._parse_script_response(content)
+
+                    # Additional validation: check speaker names
+                    self._validate_speaker_names(script)
+
+                    logger.info(f"Successfully generated manzai script with {len(script)} lines")
+                    return script
+
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(
+                        f"Attempt {attempt}/{max_retries} failed with parsing error: {e}"
+                    )
+
+                    if attempt == max_retries:
+                        logger.error("All retry attempts exhausted")
+                        raise
+
+                    logger.info(f"Retrying... ({attempt + 1}/{max_retries})")
+
+        except Exception as e:
+            logger.error(f"Failed to generate manzai script: {str(e)}")
+            raise
+
     def _load_prompt(self, prompt_path: Path) -> str:
         """Load prompt from markdown file.
 
@@ -212,6 +320,72 @@ class NewsProcessor:
 
         logger.debug(f"Loaded prompt from: {prompt_path}")
         return content
+
+    def _load_patterns(self) -> List[Dict[str, str]]:
+        """Load manzai patterns from JSON file.
+
+        Returns:
+            List of pattern dictionaries with pattern_id, style, shindo_logic, moriya_tsukkomi.
+
+        Raises:
+            FileNotFoundError: If patterns file doesn't exist.
+            ValueError: If patterns file is not valid JSON.
+        """
+        if not PATTERNS_PATH.exists():
+            raise FileNotFoundError(f"Patterns file not found: {PATTERNS_PATH}")
+
+        try:
+            with open(PATTERNS_PATH, 'r', encoding='utf-8') as f:
+                patterns = json.load(f)
+
+            logger.info(f"Loaded {len(patterns)} manzai patterns from {PATTERNS_PATH}")
+            return patterns
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse patterns JSON: {e}")
+            raise ValueError(f"Invalid JSON in patterns file: {e}")
+
+    def _assign_patterns_to_news(
+        self,
+        selected_news: List[Dict[str, str]],
+        patterns: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """Assign random manzai patterns to each news article without duplication.
+
+        Args:
+            selected_news: List of selected news articles.
+            patterns: List of available manzai patterns.
+
+        Returns:
+            List of news articles with assigned patterns.
+
+        Raises:
+            ValueError: If not enough patterns available for the number of news articles.
+        """
+        num_news = len(selected_news)
+
+        if len(patterns) < num_news:
+            raise ValueError(
+                f"Not enough patterns ({len(patterns)}) for {num_news} news articles"
+            )
+
+        # Randomly select patterns without duplication
+        selected_patterns = random.sample(patterns, num_news)
+
+        # Assign patterns to news articles
+        news_with_patterns = []
+        for news, pattern in zip(selected_news, selected_patterns):
+            news_with_pattern = news.copy()
+            news_with_pattern['pattern'] = pattern
+            news_with_patterns.append(news_with_pattern)
+
+            logger.debug(
+                f"Assigned pattern '{pattern['style']}' (ID: {pattern['pattern_id']}) "
+                f"to news: {news['title'][:50]}..."
+            )
+
+        logger.info(f"Successfully assigned {num_news} unique patterns to news articles")
+        return news_with_patterns
 
     def _format_articles_for_prompt(self, articles: List[Dict[str, str]]) -> str:
         """Format articles list into readable text for prompt.
@@ -251,6 +425,148 @@ class NewsProcessor:
             formatted.append("")
 
         return "\n".join(formatted)
+
+    def _format_news_with_patterns(
+        self,
+        news_with_patterns: List[Dict[str, str]]
+    ) -> str:
+        """Format news with assigned patterns for detailed manzai script generation.
+
+        Args:
+            news_with_patterns: List of news articles with assigned patterns.
+
+        Returns:
+            Formatted string with news and pattern instructions for each topic.
+        """
+        formatted = []
+
+        for i, news in enumerate(news_with_patterns, 1):
+            pattern = news['pattern']
+
+            formatted.append(f"【トピック{i}】")
+            formatted.append(f"ニュース: {news['title']}")
+            formatted.append(f"要約: {news['summary']}")
+            formatted.append("")
+            formatted.append(f"パターン: {pattern['style']}")
+            formatted.append(f"シンドウの思考: {pattern['shindo_logic']}")
+            formatted.append(f"モリヤのツッコミ方針: {pattern['moriya_tsukkomi']}")
+            formatted.append("")
+            formatted.append("---")
+            formatted.append("")
+
+        return "\n".join(formatted)
+
+    def _build_character_instructions(self) -> str:
+        """Build comprehensive character instructions for manzai script generation.
+
+        Returns:
+            Detailed character instructions including roles, dialect, and structure.
+        """
+        instructions = """
+# 経済漫才台本生成システム - Capital Gains
+
+あなたは関西弁の経済漫才台本を生成するAIアシスタントです。
+ビジネスニュースを題材に、シンドウ（ボケ）とモリヤ（ツッコミ）の掛け合いで台本を作成してください。
+
+## 登場人物
+
+### モリヤ（ツッコミ役）
+- **表記**: 必ず「モリヤ」のカタカナで統一してください（AIの読み間違い防止）
+- **役割**: ツッコミ兼解説者
+- **責任**:
+  - 各ニュースの冒頭で、背景・数字・市場の反応など詳細を「しっかり目（4〜6セリフ分）」に解説する
+  - シンドウのボケを鋭くツッコミ・訂正した直後に、リスナーが納得できる「正しい解説」を入れる
+  - 各トピックの最後に「投資や生活への教訓」をまとめる
+- **性格**: 冷静、論理的、でも関西人らしいキレのあるツッコミ
+- **口調**: 「〜やねん」「〜やろ」「ちゃうねん！」など関西弁を多用
+
+### シンドウ（ボケ役）
+- **表記**: 必ず「シンドウ」のカタカナで統一してください（AIの読み間違い防止）
+- **役割**: ボケ担当
+- **責任**:
+  - 割り当てられたパターンに従い、モリヤの詳細解説を台無しにする「斜め上の解釈」を大真面目に展開
+  - 予測不能で、常識外れだが、パターンには忠実な発言
+- **性格**: 天然、予測不能、独自の論理を持つ
+- **口調**: 「〜や」「〜やで」「〜やろ」など関西弁
+
+## 台本の構成ルール
+
+### 基本フロー（各トピックごと）
+1. **モリヤの導入解説**（4〜6セリフ）
+   - ニュースの背景、重要な数字、市場の反応を詳しく説明
+   - リスナーが状況を理解できるよう、丁寧に情報提供
+
+2. **シンドウのボケ展開**（2〜4セリフ）
+   - 割り当てられたパターンに従った「斜め上の解釈」
+   - モリヤの解説を予想外の方向に持っていく
+
+3. **モリヤのツッコミ＋正しい解説**（3〜5セリフ）
+   - 「〜ちゃうねん！」「それは違うやろ！」などキレのあるツッコミ
+   - その直後に、正確な経済知識・投資の視点を提供
+
+4. **追加のやり取り**（必要に応じて2〜4往復）
+   - テンポよく、でも情報は抜けなく
+
+5. **モリヤのまとめ**（1〜2セリフ）
+   - 投資家・リスナーへの教訓や示唆
+
+### 関西弁の使い方
+- **倒置法**: 「大変なことなっとるで、これ」
+- **絶句**: 「....」（ツッコミ前の溜め）
+- **独特の助詞**: 「〜やろ」「〜やねん」「〜しとるんや」「〜ちゃうねん」
+- **強調**: 「めっちゃ」「ほんまに」「えらいこっちゃ」
+- **ツッコミ**: 「何言うとんねん！」「アホか！」「そうはならんやろ！」
+
+### 単調さの排除
+- 5つのニュースすべてで「異なるパターン」が割り当てられています
+- 各トピックで展開の仕方、テンポ、ボケの種類を変えてください
+- 同じツッコミフレーズを連続で使わないこと
+
+### 出力形式（厳守）
+必ず以下のJSON形式で出力してください：
+
+```json
+{
+  "script": [
+    {"speaker": "モリヤ", "text": "さて、今日の最初のニュースやけどな..."},
+    {"speaker": "シンドウ", "text": "お、何や何や？"},
+    {"speaker": "モリヤ", "text": "..."}
+  ]
+}
+```
+
+- `speaker` は必ず「モリヤ」または「シンドウ」（カタカナ）
+- `text` は1セリフの内容
+- 配列の順序がそのまま台本の順序になります
+"""
+        return instructions.strip()
+
+    def _validate_speaker_names(self, script: List[Dict[str, str]]) -> None:
+        """Validate that speaker names are correct (モリヤ or シンドウ).
+
+        Args:
+            script: List of script lines with speaker and text.
+
+        Raises:
+            ValueError: If invalid speaker names are found.
+        """
+        valid_speakers = {"モリヤ", "シンドウ"}
+        invalid_lines = []
+
+        for i, line in enumerate(script):
+            speaker = line.get("speaker", "")
+            if speaker not in valid_speakers:
+                invalid_lines.append(f"Line {i + 1}: '{speaker}'")
+
+        if invalid_lines:
+            error_msg = (
+                f"Invalid speaker names found. Expected 'モリヤ' or 'シンドウ', "
+                f"but found:\n" + "\n".join(invalid_lines)
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.debug(f"Speaker name validation passed for {len(script)} lines")
 
     def _parse_selection_response(self, response: str) -> List[Dict[str, str]]:
         """Parse GPT response for news selection.

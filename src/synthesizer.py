@@ -2,8 +2,8 @@
 
 This module converts manzai script dialogue into audio files using OpenAI TTS API.
 Each character has a specific voice:
-- 進藤 (Shindo): Onyx (low, heavy tone)
-- 守屋 (Moriya): Alloy (bright, clear tone)
+- シンドウ (Shindo): Onyx (low, heavy tone)
+- モリヤ (Moriya): Alloy (bright, clear tone)
 """
 
 import logging
@@ -22,8 +22,8 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "tmp" / "audio"
 
 # Voice mapping for characters
 VOICE_MAP = {
-    "進藤": "onyx",      # Shindo: Deep, authoritative voice
-    "守屋": "alloy",     # Moriya: Bright, energetic voice
+    "シンドウ": "onyx",      # Shindo: Deep, authoritative voice
+    "モリヤ": "alloy",     # Moriya: Bright, energetic voice
 }
 
 # Default TTS configuration
@@ -81,19 +81,19 @@ class ScriptSynthesizer:
         """Synthesize all dialogue lines in the script to audio files.
 
         Args:
-            script: List of dialogue lines in format [{"speaker": "進藤", "text": "..."}]
+            script: List of dialogue lines in format [{"speaker": "シンドウ", "text": "..."}]
             speed: Speech speed multiplier (0.25 to 4.0). Defaults to 1.0.
 
         Returns:
             List of dictionaries with dialogue info and audio file paths:
-            [{"speaker": "進藤", "text": "...", "audio_path": "path/to/file.mp3"}]
+            [{"speaker": "シンドウ", "text": "...", "audio_path": "path/to/file.mp3"}]
 
         Raises:
             Exception: If TTS API call fails or audio generation encounters errors.
 
         Examples:
             >>> synthesizer = ScriptSynthesizer()
-            >>> script = [{"speaker": "進藤", "text": "おはようございます"}]
+            >>> script = [{"speaker": "シンドウ", "text": "おはようございます"}]
             >>> audio_data = synthesizer.synthesize_script(script)
             >>> print(audio_data[0]['audio_path'])
         """
@@ -152,7 +152,7 @@ class ScriptSynthesizer:
 
         Args:
             text: The dialogue text to synthesize.
-            speaker: The speaker name (e.g., "進藤", "守屋").
+            speaker: The speaker name (e.g., "シンドウ", "モリヤ").
             speed: Speech speed multiplier (0.25 to 4.0). Defaults to 1.0.
             output_path: Custom output file path. If None, auto-generates path.
 
@@ -166,7 +166,7 @@ class ScriptSynthesizer:
             >>> synthesizer = ScriptSynthesizer()
             >>> audio_path = synthesizer.synthesize_line(
             ...     text="おはようございます",
-            ...     speaker="進藤"
+            ...     speaker="シンドウ"
             ... )
         """
         voice = self._get_voice_for_speaker(speaker)
@@ -185,7 +185,7 @@ class ScriptSynthesizer:
         """Get the appropriate voice for a given speaker.
 
         Args:
-            speaker: Speaker name (e.g., "進藤", "守屋").
+            speaker: Speaker name (e.g., "シンドウ", "モリヤ").
 
         Returns:
             Voice name for OpenAI TTS (e.g., "onyx", "alloy").
@@ -275,7 +275,7 @@ def synthesize_manzai_script(
     """Convenience function to synthesize a manzai script.
 
     Args:
-        script: List of dialogue lines in format [{"speaker": "進藤", "text": "..."}]
+        script: List of dialogue lines in format [{"speaker": "シンドウ", "text": "..."}]
         output_dir: Directory to save audio files. If None, uses tmp/audio/ in project.
         speed: Speech speed multiplier (0.25 to 4.0). Defaults to 1.0.
         api_key: OpenAI API key. If not provided, uses OPENAI_API_KEY env var.
@@ -285,8 +285,8 @@ def synthesize_manzai_script(
 
     Examples:
         >>> script = [
-        ...     {"speaker": "進藤", "text": "おはようございます"},
-        ...     {"speaker": "守屋", "text": "おはよう"}
+        ...     {"speaker": "シンドウ", "text": "おはようございます"},
+        ...     {"speaker": "モリヤ", "text": "おはよう"}
         ... ]
         >>> audio_data = synthesize_manzai_script(script)
         >>> print(f"Generated {len(audio_data)} audio files")
@@ -309,19 +309,19 @@ if __name__ == "__main__":
     # Test the synthesizer with sample script
     test_script = [
         {
-            "speaker": "進藤",
+            "speaker": "シンドウ",
             "text": "おはようございます！今日のビジネスニュース、めっちゃ儲かりそうやで！"
         },
         {
-            "speaker": "守屋",
+            "speaker": "モリヤ",
             "text": "おはよう。また何か変な話やろ？ちゃんと説明してみい。"
         },
         {
-            "speaker": "進藤",
+            "speaker": "シンドウ",
             "text": "いやいや、これはガチやって。全財産突っ込むわ！"
         },
         {
-            "speaker": "守屋",
+            "speaker": "モリヤ",
             "text": "アホか！そんなんリスク管理できてへんやん。ちゃんと分散投資せなあかんで。"
         }
     ]
